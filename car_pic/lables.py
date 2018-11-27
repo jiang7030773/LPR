@@ -14,8 +14,8 @@ def ListFilesToTxt(dir,file,wildcard,recursion):
         if(not recursion):
             break
 def Test():
-  dir="./3922/"
-  outfile="binaries.txt"
+  dir="./image/val"
+  outfile="train_labels.txt"
   wildcard = ".jpg"
 
   file = open(outfile,'w+')
