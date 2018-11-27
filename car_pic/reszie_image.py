@@ -21,6 +21,9 @@ def resize_image(path):
             image_nums += 1
             print('成功修改第%d张图片大小'%image_nums)
 
+# def label():
+    
+
 
 
 if __name__ == '__main__':
