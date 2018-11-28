@@ -1,5 +1,4 @@
 import os
-import argparse
 
 import cv2
 import numpy as np
@@ -38,7 +37,7 @@ def ctc_lambda_func(args):
     return K.ctc_batch_cost(labels, y_pred, input_length, label_length)
 
 def build_model(width, num_channels):
-    input_tensor = Input(name='the_input', shape=(width, 39, num_channels), dtype='float32')
+    input_tensor = Input(name='the_input', shape=(width, 40, num_channels), dtype='float32')
     x = input_tensor
     base_conv = 32
     #卷积层1
@@ -140,7 +139,8 @@ class TextImageGenerator:
         # labels = np.zeros([batch_size, self._label_len])
         for j, i in enumerate(range(start, end)):
             fname = self._filenames[i]
-            img = cv2.imread(os.path.join(self._img_dir, fname))
+            # img = cv2.imread(os.path.join(self._img_dir, fname)) 不能读取中文
+            img = cv2.imdecode(np.fromfile(self._img_dir+fname.strip()+'.jpg', dtype=np.uint8), -1)
             images[j, ...] = img
         images = np.transpose(images, axes=[0, 2, 1, 3])
         labels = self._labels[start:end, ...]
@@ -238,11 +238,10 @@ if __name__ == '__main__':
     tl = './car_pic/image/train_labels.txt' #训练标签文件
     vi = './car_pic/image/val/'  #验证图片目录
     vl = './car_pic/image/val_labels.txt' #验证标签文件
-    img_size = [128,39] #训练图片宽和高
+    img_size = [128,40] #训练图片宽和高
     label_len = 7 #标签长度
     dir_log = './logs/'
     c = './car_pic/image/' #checkpoints format string
-    batch_size = 32
     num_epochs = 20     #number of epochs
     start_of_epoch = 0
 
@@ -252,7 +251,7 @@ if __name__ == '__main__':
     pool_size = 2
     time_dense_size = 32
     rnn_size = 512
-    minibatch_size = 32
+    batch_size = 16
     
     #同时保存model和权重的方式
     save_name = 'model_weight.h5'

@@ -553,7 +553,7 @@ def train(run_name, start_epoch, stop_epoch, img_w):
         initial_epoch=start_epoch)
 
 if __name__ == '__main__':
-    run_name = datetime.datetime.now().strftime('%Y:%m:%d:%H:%M:%S')
+    run_name = datetime.datetime.now().strftime('%Y.%m.%d.%H.%M')
     train(run_name, 0, 20, 128)
     # increase to wider images and start at epoch 20.
     # The learned weights are reloaded

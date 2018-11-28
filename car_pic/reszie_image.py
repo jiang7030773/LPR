@@ -9,7 +9,7 @@ def resize_image(path):
         if os.path.splitext(filename)[1] == '.jpg':
             img = cv2.imdecode(np.fromfile(path + filename, dtype=np.uint8), -1)
             print(img.shape)
-            newImg = cv2.resize(img,dsize=(128,39))
+            newImg = cv2.resize(img,dsize=(128,40))
             # newImg = cv2.resize(img, dsize=(int((np.shape(img)[1])*0.2), int((np.shape(img)[0])*0.2)))
             
             # cv2.namedWindow("Image")
@@ -22,10 +22,7 @@ def resize_image(path):
             print('成功修改第%d张图片大小'%image_nums)
 
 # def label():
-    
-
-
 
 if __name__ == '__main__':
-    path = "./car_pic/3922/"
+    path = "./car_pic/image/val/"
     resize_image(path)
