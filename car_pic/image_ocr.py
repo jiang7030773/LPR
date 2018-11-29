@@ -196,7 +196,8 @@ def is_valid_str(in_str):
 # each time with random perturbations
 
 class TextImageGenerator(keras.callbacks.Callback):
-
+    
+    # 构造函数用于解决类中的对象初始化的问题 
     def __init__(self, monogram_file, bigram_file, minibatch_size,
                  img_w, img_h, downsample_factor, val_split,
                  absolute_max_string_len=16):
@@ -517,8 +518,6 @@ def train(run_name, start_epoch, stop_epoch, img_w):
     labels = Input(name='the_labels',shape=[img_gen.absolute_max_string_len], dtype='float32')
     input_length = Input(name='input_length', shape=[1], dtype='int64')
     label_length = Input(name='label_length', shape=[1], dtype='int64')
-    # Keras doesn't currently support loss funcs with extra parameters
-    # so CTC loss is implemented in a lambda layer
     # Lambda 是一个layer，将任意表达式封装为 Layer 对象。
     loss_out = Lambda(
         ctc_lambda_func, output_shape=(1,),

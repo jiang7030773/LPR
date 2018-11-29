@@ -1,5 +1,4 @@
 '''写了点小代码，统一图片命名和格式,删掉有重复命名的'''
-
 import os
 
 def rename(filepath):
@@ -10,8 +9,6 @@ def rename(filepath):
             os.rename(filepath+name,filepath+name[0:7]+'.jpg')
             renames_nums += 1
     print("修改了%d张图片名"%renames_nums)
-
-
 
 def Modify_suffix(filepath):
     renames_nums = 0

@@ -11,6 +11,7 @@ from keras.layers.recurrent import GRU
 from keras.models import Model
 from keras.optimizers import SGD
 from keras.callbacks import ModelCheckpoint, TensorBoard
+from keras.models import load_model
 
 import codecs
 
@@ -168,13 +169,24 @@ def export(save_name):
     model.save(save_name)
     print('model saved to {}'.format(save_name))
 
-def main ():
+def test_model():
+    model = load_model('model_weight.h5')  #选取自己的.h模型名称
+    image = cv2.imread('川A8DR96.jpg')
+    predict = model.predict_classes(image)
+    print ('识别为：')
+    print (predict)
+    cv2.imshow("Image1", image)
+    cv2.waitKey(0)
+
+
+
+def main (train_model=True):
 
     ckpt_dir = os.path.dirname(c)
     if not os.path.isdir(ckpt_dir):
         os.makedirs(ckpt_dir)
 
-    if dir_log != '' and not os.path.isdir(dir_log):
+    if (train_model) and not os.path.isdir(dir_log):
         os.makedirs(dir_log)
 
     input_tensor, y_pred = build_model(img_size[0], num_channels)
@@ -183,7 +195,7 @@ def main ():
     input_length = Input(name='input_length', shape=[1], dtype='int32')
     label_length = Input(name='label_length', shape=[1], dtype='int32')
 
-    pred_length = int(y_pred.shape[1])
+    pred_length = int(y_pred.shape[1]-2)  #为啥会减去2才可以运行？？？
     # Keras doesn't currently support loss funcs with extra parameters
     # so CTC loss is implemented in a lambda layer
     loss_out = Lambda(ctc_lambda_func, output_shape=(1,), name='ctc')([y_pred, labels, input_length, label_length])
@@ -194,7 +206,8 @@ def main ():
     model = Model(inputs=[input_tensor, labels, input_length, label_length], outputs=loss_out)
 
     # the loss calc occurs elsewhere, so use a dummy lambda func for the loss
-    model.compile(loss={'ctc': lambda y_true, y_pred: y_pred}, optimizer=sgd)
+    model.compile(loss={'ctc': lambda y_true, y_pred: y_pred}, optimizer='adam')
+    # model.compile(loss={'ctc': lambda y_true, y_pred: y_pred}, optimizer=sgd)
 
     train_gen = TextImageGenerator(img_dir=ti,
                                  label_file=tl,
@@ -212,23 +225,33 @@ def main ():
                                  num_channels=num_channels,
                                  label_len=label_len)
 
-    #该回调函数将在每个epoch后保存模型到路径
-    checkpoints_cb = ModelCheckpoint(c, period=1)
-    cbs = [checkpoints_cb]
+    # #该回调函数将在每个epoch后保存模型到路径
+    # checkpoints_cb = ModelCheckpoint(c, period=1)
+    # cbs = [checkpoints_cb]
 
-    if dir_log != '':
-        tfboard_cb = TensorBoard(log_dir=dir_log, write_images=True)
-        cbs.append(tfboard_cb)
-
-    model.fit_generator(generator=train_gen.get_data(),
+    # #tensorboard 
+    # if dir_log != '':
+    #     tfboard_cb = TensorBoard(log_dir=dir_log, write_images=True)
+    #     cbs.append(tfboard_cb)
+    if train_model:
+        model.fit_generator(generator=train_gen.get_data(),
                         steps_per_epoch=(train_gen._num_examples+train_gen._batch_size-1) // train_gen._batch_size,
                         epochs=num_epochs,
                         validation_data=val_gen.get_data(),
                         validation_steps=(val_gen._num_examples+val_gen._batch_size-1) // val_gen._batch_size,
-                        callbacks=cbs,
-                        initial_epoch=start_of_epoch)
-    
-    export(save_name)  #保存模型
+                        # callbacks=cbs,
+                        initial_epoch=start_of_epoch,
+                        callbacks=[EarlyStopping(patience=10)])
+        export(save_name)  #保存模型
+    else:
+        model = load_model('model_weight.h5')  #选取自己的.h模型名称
+        img = cv2.imdecode(np.fromfile(vi+'藏GAC508.jpg', dtype=np.uint8), -1)
+        predict = model.predict(img)
+        print ('识别为：')
+        print (predict)
+        cv2.imshow("Image1", img)
+        cv2.waitKey(0)
+
 
 if __name__ == '__main__':
 
@@ -242,7 +265,7 @@ if __name__ == '__main__':
     label_len = 7 #标签长度
     dir_log = './logs/'
     c = './car_pic/image/' #checkpoints format string
-    num_epochs = 20     #number of epochs
+    num_epochs = 200     #number of epochs
     start_of_epoch = 0
 
     #网络参数
@@ -251,8 +274,10 @@ if __name__ == '__main__':
     pool_size = 2
     time_dense_size = 32
     rnn_size = 512
-    batch_size = 16
-    
+    batch_size = 32
+
+    train_model = False #是否训练模型  True 是
+
     #同时保存model和权重的方式
     save_name = 'model_weight.h5'
-    main()
+    main(train_model)
