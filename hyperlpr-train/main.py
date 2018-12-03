@@ -13,6 +13,7 @@ from keras.optimizers import SGD
 from keras.callbacks import ModelCheckpoint, TensorBoard
 from keras.models import load_model
 
+import matplotlib.pyplot as plt
 import codecs
 
 CHARS = ['京', '沪', '津', '渝', '冀', '晋', '蒙', '辽', '吉', '黑',
@@ -29,12 +30,10 @@ CHARS_DICT = {char:i for i, char in enumerate(CHARS)}
 
 NUM_CHARS = len(CHARS)
 
-# The actual loss calc occurs here despite it not being
-# an internal Keras loss function
 def ctc_lambda_func(args):
     y_pred, labels, input_length, label_length = args
     #为什么是从2开始？
-    y_pred = y_pred[:, 2:, :]  
+    y_pred = y_pred[:, :, :]  
     return K.ctc_batch_cost(labels, y_pred, input_length, label_length)
 
 def build_model(width, num_channels):
@@ -69,12 +68,12 @@ def build_model(width, num_channels):
     gru_2 = GRU(rnn_size,return_sequences=True,kernel_initializer='he_normal',name='gru_2')(gru1_merged)
     gru_2b = GRU(rnn_size,return_sequences=True,go_backwards=True,kernel_initializer='he_normal',name='gru_2b')(gru1_merged)
 
-    # transforms RNN output to character activations:  
     x = Dense(NUM_CHARS+1,kernel_initializer='he_normal',name='dense2')(concatenate([gru_2,gru_2b]))
     y_pred = Activation('softmax',name='softmax')(x)
 
-    #打印出模型概况
-    Model(inputs=input_tensor, outputs=y_pred).summary()
+    base_model = Model(inputs=input_tensor, outputs=y_pred)
+    #打印出模型概况    
+    base_model.summary()
 
     return input_tensor, y_pred
 
@@ -92,13 +91,13 @@ def parse_line(line):
 
 class TextImageGenerator:
     def __init__(self, img_dir, label_file, batch_size, img_size, input_length, num_channels, label_len):
-        self._img_dir = img_dir
-        self._label_file = label_file
-        self._batch_size = batch_size
-        self._num_channels = num_channels
-        self._label_len = label_len
-        self._input_len = input_length
-        self._img_w, self._img_h = img_size
+        self.img_dir = img_dir
+        self.label_file = label_file
+        self.batch_size = batch_size
+        self.num_channels = num_channels
+        self.label_len = label_len
+        self.input_len = input_length
+        self.img_w, self.img_h = img_size
 
         self._num_examples = 0
         self._next_index = 0
@@ -110,7 +109,7 @@ class TextImageGenerator:
 
     def init(self):
         self.labels = []
-        with codecs.open(self._label_file,mode='r', encoding='utf-8') as f:
+        with codecs.open(self.label_file,mode='r', encoding='utf-8') as f:
             for line in f:
                 filename, label = parse_line(line)
                 self.filenames.append(filename)
@@ -126,7 +125,7 @@ class TextImageGenerator:
             self._filenames = [self.filenames[i] for i in perm]
             self._labels = self.labels[perm]
         #  
-        batch_size = self._batch_size
+        batch_size = self.batch_size
         start = self._next_index
         end = self._next_index + batch_size
         if end >= self._num_examples:
@@ -136,19 +135,19 @@ class TextImageGenerator:
             batch_size = self._num_examples - start
         else:
             self._next_index = end
-        images = np.zeros([batch_size, self._img_h, self._img_w, self._num_channels])
-        # labels = np.zeros([batch_size, self._label_len])
+        images = np.zeros([batch_size, self.img_h, self.img_w, self.num_channels])
+        # labels = np.zeros([batch_size, self.label_len])
         for j, i in enumerate(range(start, end)):
             fname = self._filenames[i]
             # img = cv2.imread(os.path.join(self._img_dir, fname)) 不能读取中文
-            img = cv2.imdecode(np.fromfile(self._img_dir+fname.strip()+'.jpg', dtype=np.uint8), -1)
+            img = cv2.imdecode(np.fromfile(self.img_dir+fname.strip()+'.jpg', dtype=np.uint8), -1)
             images[j, ...] = img
         images = np.transpose(images, axes=[0, 2, 1, 3])
         labels = self._labels[start:end, ...]
         input_length = np.zeros([batch_size, 1])
         label_length = np.zeros([batch_size, 1])
-        input_length[:] = self._input_len
-        label_length[:] = self._label_len
+        input_length[:] = self.input_len
+        label_length[:] = self.label_len
         outputs = {'ctc': np.zeros([batch_size])}
         inputs = {'the_input': images,
                   'the_labels': labels,
@@ -171,14 +170,15 @@ def export(save_name):
 
 def test_model():
     model = load_model('model_weight.h5')  #选取自己的.h模型名称
-    image = cv2.imread('川A8DR96.jpg')
-    predict = model.predict_classes(image)
-    print ('识别为：')
-    print (predict)
-    cv2.imshow("Image1", image)
+    img = cv2.imdecode(np.fromfile(vi+'藏GAC508.jpg', dtype=np.uint8), -1)
+    img = np.array(img).reshape(1,128,40,3)
+    y_pred = model.predict(img)
+    y_pred = y_pred[:,2:,:]
+    out = K.get_value(K.ctc_decode(y_pred, input_length=np.ones(y_pred.shape[0])*y_pred.shape[1], )[0][0])[:, :7]
+    out = ''.join([CHARS[x] for x in out[0]])
+    print('pred:' + str(out))
+    cv2.imshow("Image1", img)
     cv2.waitKey(0)
-
-
 
 def main (train_model=True):
 
@@ -195,7 +195,7 @@ def main (train_model=True):
     input_length = Input(name='input_length', shape=[1], dtype='int32')
     label_length = Input(name='label_length', shape=[1], dtype='int32')
 
-    pred_length = int(y_pred.shape[1]-2)  #为啥会减去2才可以运行？？？
+    pred_length = int(y_pred.shape[1])  #为啥会减去2才可以运行？？？
     # Keras doesn't currently support loss funcs with extra parameters
     # so CTC loss is implemented in a lambda layer
     loss_out = Lambda(ctc_lambda_func, output_shape=(1,), name='ctc')([y_pred, labels, input_length, label_length])
@@ -235,22 +235,17 @@ def main (train_model=True):
     #     cbs.append(tfboard_cb)
     if train_model:
         model.fit_generator(generator=train_gen.get_data(),
-                        steps_per_epoch=(train_gen._num_examples+train_gen._batch_size-1) // train_gen._batch_size,
+                        steps_per_epoch=(train_gen._num_examples+train_gen.batch_size-1) // train_gen.batch_size,
                         epochs=num_epochs,
                         validation_data=val_gen.get_data(),
-                        validation_steps=(val_gen._num_examples+val_gen._batch_size-1) // val_gen._batch_size,
+                        validation_steps=(val_gen._num_examples+val_gen.batch_size-1) // val_gen.batch_size,
                         # callbacks=cbs,
                         initial_epoch=start_of_epoch,
                         callbacks=[EarlyStopping(patience=10)])
         export(save_name)  #保存模型
     else:
-        model = load_model('model_weight.h5')  #选取自己的.h模型名称
-        img = cv2.imdecode(np.fromfile(vi+'藏GAC508.jpg', dtype=np.uint8), -1)
-        predict = model.predict(img)
-        print ('识别为：')
-        print (predict)
-        cv2.imshow("Image1", img)
-        cv2.waitKey(0)
+        test_model()
+
 
 
 if __name__ == '__main__':
