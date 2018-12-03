@@ -196,8 +196,7 @@ def is_valid_str(in_str):
 # each time with random perturbations
 
 class TextImageGenerator(keras.callbacks.Callback):
-    
-    # 构造函数用于解决类中的对象初始化的问题 
+
     def __init__(self, monogram_file, bigram_file, minibatch_size,
                  img_w, img_h, downsample_factor, val_split,
                  absolute_max_string_len=16):
