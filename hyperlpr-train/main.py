@@ -12,6 +12,10 @@ from keras.models import Model
 from keras.optimizers import SGD
 from keras.callbacks import ModelCheckpoint, TensorBoard
 from keras.models import load_model
+from keras.utils.vis_utils import plot_model
+
+import tensorflow as tf
+from keras.backend.tensorflow_backend import set_session
 
 CHARS = ['京', '沪', '津', '渝', '冀', '晋', '蒙', '辽', '吉', '黑',
          '苏', '浙', '皖', '闽', '赣', '鲁', '豫', '鄂', '湘', '粤',
@@ -24,6 +28,13 @@ CHARS = ['京', '沪', '津', '渝', '冀', '晋', '蒙', '辽', '吉', '黑',
          ]
 CHARS_DICT = {char:i for i, char in enumerate(CHARS)}
 NUM_CHARS = len(CHARS)
+# GPU选用1060，不选会自动调用集显
+# os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+#动态申请显存
+config = tf.ConfigProto()
+config.gpu_options.allow_growth=True
+set_session(tf.Session(config=config))
+
 
 #必要参数
 num_channels = 3
@@ -44,7 +55,7 @@ kernel_size = (3, 3)
 pool_size = 2
 time_dense_size = 32
 rnn_size = 512
-batch_size = 1
+batch_size = 16
 
 def ctc_lambda_func(args):
     y_pred, labels, input_length, label_length = args
@@ -71,12 +82,19 @@ x = Conv2D(base_conv * 4, (3,3), padding="same",name='conv3')(x)
 x = BatchNormalization()(x)
 x = Activation('relu')(x)
 x = MaxPooling2D(pool_size=(2, 2))(x)
+# 参数查看
+# conv_shape = x.get_shape().as_list()
+# rnn_length = conv_shape[1]
+# rnn_dimen = conv_shape[2]*conv_shape[3]
+# print(conv_shape, rnn_length, rnn_dimen)
 #维度变换
 conv_to_rnn_dims = (img_size[0]//(2**3),(img_size[1]//(2**3))*128)
 x = Reshape(target_shape=conv_to_rnn_dims,name='reshape')(x)
 x =Dense(time_dense_size,activation='relu',name='dense1')(x)
 x = BatchNormalization()(x)
 x = Activation('relu')(x)
+
+# x = Dropout(0.2)(x)
 #两层bidirecitonal GRUs
 gru_1 = GRU(rnn_size,return_sequences=True,kernel_initializer='he_normal',name='gru_1')(x)
 gru_1b = GRU(rnn_size,return_sequences=True,go_backwards=True,kernel_initializer='he_normal',name='gru_1b')(x)
@@ -86,20 +104,24 @@ gru_2b = GRU(rnn_size,return_sequences=True,go_backwards=True,kernel_initializer
 
 # transforms RNN output to character activations:  
 x = Dense(NUM_CHARS+1,kernel_initializer='he_normal',name='dense2')(concatenate([gru_2,gru_2b]))
-y_pred = Activation('softmax',name='softmax')(x)
+x = Activation('softmax',name='softmax')(x)
 
 #打印出模型概况
-base_model = Model(inputs=input_tensor, outputs=y_pred)
+base_model = Model(inputs=input_tensor, outputs=x)
 base_model.summary()
 #计算ctc必要参数
-pred_length = int(y_pred.shape[1]-2)  #为啥会减去2才可以运行？？？
+pred_length = int(x.shape[1])-2  #为啥会减去2才可以运行？？？
 labels = Input(name='the_labels', shape=[label_len], dtype='float32')
 input_length = Input(name='input_length', shape=[1], dtype='int32')
 label_length = Input(name='label_length', shape=[1], dtype='int32')
 
-loss_out = Lambda(ctc_lambda_func, output_shape=(1,), name='ctc')([y_pred, labels, input_length, label_length])
+loss_out = Lambda(ctc_lambda_func, output_shape=(1,), name='ctc')([x, labels, input_length, label_length])
 
-model = Model(inputs=[input_tensor, labels, input_length, label_length], outputs=loss_out)
+model = Model(inputs=[input_tensor, labels, input_length, label_length], outputs=[loss_out])
+
+plot_model(model,to_file=" gru_model.png",show_shapes=True) #show_shapes 带参数显示
+
+model.compile(loss={'ctc': lambda y_true, y_pred: y_pred}, optimizer='adam')
 
 # 车牌对应的lables
 def encode_label(s):
@@ -119,14 +141,15 @@ def ImageDataGenerator(img_dir, label_file, batch_size, img_size, input_length, 
     num_examples = 0
     next_index = 0
     filenames = []
-    labels = []
+    labels_all = []
+    _input_length = input_length
     with codecs.open(label_file,mode='r', encoding='utf-8') as f:
         for line in f:
             filename, label = parse_line(line)
             filenames.append(filename)
-            labels.append(label)
+            labels_all.append(label)
             num_examples += 1
-    labels = np.array(labels) #没有必要浮点话？
+    labels_all = np.array(labels_all) #没有必要浮点话？
 
     while True:
         num_epoches = 0
@@ -135,8 +158,11 @@ def ImageDataGenerator(img_dir, label_file, batch_size, img_size, input_length, 
             perm = np.arange(num_examples)
             np.random.shuffle(perm)
             filenames = [filenames[i] for i in perm]
-            labels_shuttle = labels[perm]
-        #  
+            labels_shuttle = labels_all[perm]
+        #不洗数据
+        # labels_shuttle = labels
+
+
         start = next_index
         end = next_index + batch_size
         if end >= num_examples:
@@ -146,18 +172,22 @@ def ImageDataGenerator(img_dir, label_file, batch_size, img_size, input_length, 
             batch_size = num_examples - start
         else:
             next_index = end
-        images = np.zeros([batch_size, img_size[1], img_size[0], num_channels])
-        # labels = np.zeros([batch_size, label_len])
+        images = np.zeros([batch_size, img_size[1], img_size[0], num_channels],dtype=np.uint8)
+        # labels = np.zeros([batch_size, label_len],dtype=np.uint8)
         for j, i in enumerate(range(start, end)):
             fname = filenames[i]
             img = cv2.imdecode(np.fromfile(img_dir+fname.strip()+'.jpg', dtype=np.uint8), 1)
             # cv2.imshow('test',img)
             images[j, ...] = img
-        images = np.transpose(images, axes=[0, 2, 1, 3])
+        # 高与宽转换，便于输入到rnn
+        # images1 =  images[0]
+        # cv2.imshow('test',images1)
+        images = images.transpose(0,2,1,3)
+        # images = np.transpose(images, axes=[0, 2, 1, 3])
         labels = labels_shuttle[start:end, ...]
-        input_length = np.zeros([batch_size, 1])
+        input_length = np.zeros([batch_size, 1]) #input_length 重新赋值了
         label_length = np.zeros([batch_size, 1])
-        input_length[:] = input_length
+        input_length[:] = _input_length
         label_length[:] = label_len
         outputs = {'ctc': np.zeros([batch_size])}
         inputs = {'the_input': images,
@@ -184,8 +214,18 @@ val_gen = ImageDataGenerator(img_dir=vi,
                                  num_channels=num_channels,
                                  label_len=label_len)
 
+#生成器数据测试
+# inputs, outputs= next(train_gen)
+# title = []
+# print(inputs['the_input'].shape,inputs['the_labels'])
+# a = inputs['the_labels'].astype(int)
+# # title.append(u''.join([CHARS[i] for i in a[0]]))
+# for i in range(batch_size):
+#     title_one = u''.join([CHARS[j] for j in a[i]])
+#     title.append(title_one)
+# cv2.imshow('test',inputs['the_input'][0].transpose(1, 0, 2))
 
-# 模型评估
+# # 模型评估
 def evaluate(steps=10):
     batch_acc = 0
     generator = train_gen
@@ -218,16 +258,18 @@ evaluator = Evaluator()
 # if dir_log != '':
 # tfboard_cb = TensorBoard(log_dir=dir_log, write_images=True)
 # cbs.append(tfboard_cb)
-model.compile(loss={'ctc': lambda y_true, y_pred: y_pred}, optimizer='adam')
-model.fit_generator(generator=train_gen,
-                        steps_per_epoch=300,
-                        epochs=num_epochs,
-                        validation_data=val_gen,
-                        validation_steps=20,
-                        callbacks=[EarlyStopping(patience=10),evaluator])
+import matplotlib.pyplot as plt
+
+h = model.fit_generator(generator=train_gen,
+                    steps_per_epoch=100,
+                    epochs=20,
+                    validation_data=val_gen,
+                    validation_steps=20,
+                    callbacks=[EarlyStopping(patience=10),evaluator])
+                    # callbacks=[EarlyStopping(patience=10)])
 
 # 保存模型  保存权重值
-model = Model(inputs=input_tensor, outputs=y_pred)
+model = Model(inputs=input_tensor, outputs=x)
 # model.save(save_name)
 model.save_weights('my_model_weight.h5')
 print('model saved to {}'.format('my_model_weight.h5'))

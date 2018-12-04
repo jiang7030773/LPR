@@ -211,6 +211,14 @@ def main ():
                                  num_channels=num_channels,
                                  label_len=label_len)
 
+    #生成器数据测试
+    # inputs, outputs= next(train_gen.get_data())
+    # print(inputs['the_input'].shape,inputs['the_labels'],inputs['input_length'],inputs['label_length'])
+    # a = inputs['the_labels'].astype(int)
+    # title = u''.join([CHARS[i] for i in a[0]])
+    # cv2.imshow('test',inputs['the_input'][0].transpose(1, 0, 2))
+
+
     #该回调函数将在每个epoch后保存模型到路径
     checkpoints_cb = ModelCheckpoint(c, period=1)
     cbs = [checkpoints_cb]
