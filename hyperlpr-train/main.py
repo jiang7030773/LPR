@@ -9,7 +9,7 @@ from keras.layers.merge import add, concatenate
 from keras.callbacks import EarlyStopping,Callback
 from keras.layers.recurrent import GRU
 from keras.models import Model
-from keras.optimizers import SGD
+from keras import optimizers 
 from keras.callbacks import ModelCheckpoint, TensorBoard
 from keras.models import load_model
 from keras.utils.vis_utils import plot_model
@@ -121,6 +121,7 @@ model = Model(inputs=[input_tensor, labels, input_length, label_length], outputs
 
 plot_model(model,to_file=" gru_model.png",show_shapes=True) #show_shapes 带参数显示
 
+
 model.compile(loss={'ctc': lambda y_true, y_pred: y_pred}, optimizer='adam')
 
 # 车牌对应的lables
@@ -177,6 +178,7 @@ def ImageDataGenerator(img_dir, label_file, batch_size, img_size, input_length, 
         for j, i in enumerate(range(start, end)):
             fname = filenames[i]
             img = cv2.imdecode(np.fromfile(img_dir+fname.strip()+'.jpg', dtype=np.uint8), 1)
+            # img = cv2.imread(os.path.join(img_dir+fname.strip()+'.jpg'))
             # cv2.imshow('test',img)
             images[j, ...] = img
         # 高与宽转换，便于输入到rnn
