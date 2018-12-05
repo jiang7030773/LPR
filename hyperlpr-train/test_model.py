@@ -34,14 +34,23 @@ def build_model(model_path):
     x = Conv2D(base_conv * 1, (3,3), padding="same",name='conv1')(x)
     x = BatchNormalization()(x)
     x = Activation('relu')(x)
+    x = Conv2D(base_conv * 1, (3,3), padding="same",name='conv2')(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
     x = MaxPooling2D(pool_size=(2, 2))(x)
     #卷积层2
-    x = Conv2D(base_conv * 2, (3,3), padding="same",name='conv2')(x)
+    x = Conv2D(base_conv * 2, (3,3), padding="same",name='conv3')(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    x = Conv2D(base_conv * 2, (3,3), padding="same",name='conv4')(x)
     x = BatchNormalization()(x)
     x = Activation('relu')(x)
     x = MaxPooling2D(pool_size=(2, 2))(x)
     #卷积层3
-    x = Conv2D(base_conv * 4, (3,3), padding="same",name='conv3')(x)
+    x = Conv2D(base_conv * 4, (3,3), padding="same",name='conv5')(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    x = Conv2D(base_conv * 4, (3,3), padding="same",name='conv6')(x)
     x = BatchNormalization()(x)
     x = Activation('relu')(x)
     x = MaxPooling2D(pool_size=(2, 2))(x)
@@ -65,33 +74,20 @@ def build_model(model_path):
     base_model.load_weights(model_path)
     return base_model
 
-def test_model(y_pred,X_test):
-    # get_value 以Numpy array的形式返回张量的值
-    # ctc_decode 使用贪婪算法或带约束的字典搜索算法解码softmax的输出
-    out = K.get_value(K.ctc_decode(y_pred, input_length=np.ones(y_pred.shape[0])*y_pred.shape[1], )[0][0])[:, :7]
-    out = ''.join([CHARS[x] for x in out[0]])
-    return out
-
-
-def decode(y):
-    y = np.argmax(np.array(y), axis=2)[:,0] #取第一列所有数
-    return ''.join([CHARS[x] for x in y])
-
-
-
-img_dir = './car_pic/image/train/川A02H25.jpg'
-
-img = cv2.imdecode(np.fromfile(img_dir, dtype=np.uint8), -1)
+batch_size = 32
+image_size = [128,40]
+img_dir = './car_pic/image/val/湘A23456.jpg'
+images = np.zeros([batch_size, image_size[1], image_size[0], 3])
+img = cv2.imdecode(np.fromfile(img_dir, dtype=np.uint8), 1)
 # cv2.imshow('f',img)
-a = np.array(img)
-a = a.transpose(1,0,2)
-a = np.expand_dims(a,axis=0)
+images[0, ...] = img
+images = np.transpose(images, axes=[0, 2, 1, 3])
 
-base_model = build_model('./model/model_weight.h5')
+base_model = build_model('./model/my_model_weights.h5')
 
-y_pred = base_model.predict(a)
-y_pred = y_pred[:,2:,:]
-table_pred = y_pred.reshape(-1, len(CHARS)+1)
-res = table_pred.argmax(axis=1)
-out = test_model(y_pred,'川A02H25')
+y_pred = base_model.predict(images)
+shape = y_pred[:,2:,:].shape
+ctc_decode = K.ctc_decode(y_pred[:,2:,:], input_length=np.ones(shape[0])*shape[1])[0][0]
+out = K.get_value(ctc_decode)[:, :7]
+out = ''.join([CHARS[x] for x in out[0]])
 print(out)

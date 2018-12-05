@@ -121,6 +121,7 @@ model = Model(inputs=[input_tensor, labels, input_length, label_length], outputs
 
 plot_model(model,to_file=" gru_model.png",show_shapes=True) #show_shapes 带参数显示
 
+# adam = optimizers.Adam(lr=0.01, beta_1=0.9, beta_2=0.999, epsilon=1e-08) 
 
 model.compile(loss={'ctc': lambda y_true, y_pred: y_pred}, optimizer='adam')
 

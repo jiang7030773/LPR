@@ -34,22 +34,32 @@ def ctc_lambda_func(args):
     y_pred = y_pred[:, 2:, :]  
     return K.ctc_batch_cost(labels, y_pred, input_length, label_length)
 
-def build_model(width, num_channels):
-    input_tensor = Input(name='the_input', shape=(width, 40, num_channels), dtype='float32')
+def build_model(width):
+    input_tensor = Input(name='the_input', shape=(img_size[0], img_size[1], num_channels), dtype='float32')
     x = input_tensor
     base_conv = 32
+
     #卷积层1
     x = Conv2D(base_conv * 1, (3,3), padding="same",name='conv1')(x)
     x = BatchNormalization()(x)
     x = Activation('relu')(x)
+    x = Conv2D(base_conv * 1, (3,3), padding="same",name='conv2')(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
     x = MaxPooling2D(pool_size=(2, 2))(x)
     #卷积层2
-    x = Conv2D(base_conv * 2, (3,3), padding="same",name='conv2')(x)
+    x = Conv2D(base_conv * 2, (3,3), padding="same",name='conv3')(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    x = Conv2D(base_conv * 2, (3,3), padding="same",name='conv4')(x)
     x = BatchNormalization()(x)
     x = Activation('relu')(x)
     x = MaxPooling2D(pool_size=(2, 2))(x)
     #卷积层3
-    x = Conv2D(base_conv * 4, (3,3), padding="same",name='conv3')(x)
+    x = Conv2D(base_conv * 4, (3,3), padding="same",name='conv5')(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    x = Conv2D(base_conv * 4, (3,3), padding="same",name='conv6')(x)
     x = BatchNormalization()(x)
     x = Activation('relu')(x)
     x = MaxPooling2D(pool_size=(2, 2))(x)
@@ -74,7 +84,7 @@ def build_model(width, num_channels):
     base_model = Model(inputs=input_tensor, outputs=y_pred)
     base_model.summary()
   
-    return input_tensor, y_pred
+    return input_tensor, y_pred, base_model
 
 def encode_label(s):
     label = np.zeros([len(s)])
@@ -87,7 +97,7 @@ def parse_line(line):
     filename = parts[0]
     label = encode_label(parts[0].strip().upper())
     return filename, label
-
+# 数据生成器
 class TextImageGenerator:
     def __init__(self, img_dir, label_file, batch_size, img_size, input_length, num_channels, label_len):
         self._img_dir = img_dir
@@ -159,12 +169,6 @@ class TextImageGenerator:
         while True:
             yield self.next_batch()
 
-def export(save_name):
-    input_tensor, y_pred = build_model(None, num_channels)
-    model = Model(inputs=input_tensor, outputs=y_pred)
-    model.save(save_name)
-    print('model saved to {}'.format(save_name))
-
 def main ():
 
     ckpt_dir = os.path.dirname(c)
@@ -174,23 +178,18 @@ def main ():
     if dir_log != '' and not os.path.isdir(dir_log):
         os.makedirs(dir_log)
 
-    input_tensor, y_pred = build_model(img_size[0], num_channels)
+    input_tensor, y_pred, base_model = build_model(img_size[0])
     
     labels = Input(name='the_labels', shape=[label_len], dtype='float32')
     input_length = Input(name='input_length', shape=[1], dtype='int32')
     label_length = Input(name='label_length', shape=[1], dtype='int32')
 
     pred_length = int(y_pred.shape[1]-2)
-    # Keras doesn't currently support loss funcs with extra parameters
-    # so CTC loss is implemented in a lambda layer
-    loss_out = Lambda(ctc_lambda_func, output_shape=(1,), name='ctc')([y_pred, labels, input_length, label_length])
 
-    # clipnorm seems to speeds up convergence
-    # sgd = SGD(lr=0.01, decay=1e-6, momentum=0.0, nesterov=True, clipnorm=5)
+    loss_out = Lambda(ctc_lambda_func, output_shape=(1,), name='ctc')([y_pred, labels, input_length, label_length])
 
     model = Model(inputs=[input_tensor, labels, input_length, label_length], outputs=loss_out)
 
-    # the loss calc occurs elsewhere, so use a dummy lambda func for the loss
     model.compile(loss={'ctc': lambda y_true, y_pred: y_pred}, optimizer='adam')
 
     train_gen = TextImageGenerator(img_dir=ti,
@@ -224,16 +223,43 @@ def main ():
     # if dir_log != '':
     #     tfboard_cb = TensorBoard(log_dir=dir_log, write_images=True)
     #     cbs.append(tfboard_cb)
+    
+    # 模型评估
+    def evaluate(steps):
+        batch_acc = 0
+        generator = train_gen.get_data()
+        for i in range(steps):
+            x_test, y_test = next(generator)
+            y_pred = base_model.predict(x_test)
+            shape = y_pred[:,2:,:].shape
+            ctc_decode = K.ctc_decode(y_pred[:,2:,:], input_length=np.ones(shape[0])*shape[1])[0][0]
+            out = K.get_value(ctc_decode)[:, :label_len]
+            # print(x_test['the_labels'],out)
+            if out.shape[1] == label_len:
+                batch_acc += (x_test['the_labels']==out).all(axis=1).mean()
+        return batch_acc / steps
+
+    class Evaluator(Callback):
+        def __init__(self):
+            self.accs = []
+    
+        def on_epoch_end(self, epoch, logs=None):
+            acc = evaluate(steps=20)*100
+            self.accs.append(acc)
+            print('')
+            print('acc: %f%%' % acc)
+
+    evaluator = Evaluator()  
 
     model.fit_generator(generator=train_gen.get_data(),
                         steps_per_epoch=(train_gen._num_examples+train_gen._batch_size-1) // train_gen._batch_size,
                         epochs=num_epochs,
                         validation_data=val_gen.get_data(),
                         validation_steps=(val_gen._num_examples+val_gen._batch_size-1) // val_gen._batch_size,
-                        callbacks=[EarlyStopping(patience=10)],
+                        callbacks=[EarlyStopping(patience=10),evaluator],
                         initial_epoch=start_of_epoch)
-    
-    export(save_name)  #保存模型
+    #保存模型
+    base_model.save_weights(('./model/my_model_weights.h5')) 
 
 if __name__ == '__main__':
 
@@ -248,7 +274,7 @@ if __name__ == '__main__':
     dir_log = './logs/'
     c = './car_pic/image/' #checkpoints format string
     batch_size = 32
-    num_epochs = 20     #number of epochs
+    num_epochs = 200     #number of epochs
     start_of_epoch = 0
 
     #网络参数
@@ -257,7 +283,6 @@ if __name__ == '__main__':
     pool_size = 2
     time_dense_size = 32
     rnn_size = 512
-    minibatch_size = 32
     
     #同时保存model和权重的方式
     save_name = 'model_weight.h5'
