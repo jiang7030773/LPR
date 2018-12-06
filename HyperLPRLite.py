@@ -70,7 +70,7 @@ class LPR():
             y -= h * 0.15
             h += h * 0.3
             cropped = self.cropImage(image_color_cropped, (int(x), int(y), int(w), int(h)))
-            #cv2.imshow("test",cropped)
+            cv2.imshow("test",cropped)
             cropped_images.append([cropped,[x, y+padding, w, h]])
         return cropped_images
     

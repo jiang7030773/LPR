@@ -1,7 +1,7 @@
-import os
-import cv2
-import numpy as np
+from keras.models import load_model
+import tensorflow as tf
 from keras import backend as K
+from tensorflow.python.framework import graph_io
 from keras.layers import Input, Dense, Activation, Conv2D, Reshape
 from keras.layers import BatchNormalization, Lambda, MaxPooling2D, Dropout
 from keras.layers.merge import add, concatenate
@@ -11,18 +11,22 @@ from keras.models import Model
 from keras.optimizers import SGD
 from keras.callbacks import ModelCheckpoint, TensorBoard
 from keras.models import load_model
-import matplotlib.pyplot as plt
-import codecs
 
-CHARS = ['京', '沪', '津', '渝', '冀', '晋', '蒙', '辽', '吉', '黑',
-         '苏', '浙', '皖', '闽', '赣', '鲁', '豫', '鄂', '湘', '粤',
-         '桂', '琼', '川', '贵', '云', '藏', '陕', '甘', '青', '宁',
-         '新',
-         '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-         'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K',
-         'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V',
-         'W', 'X', 'Y', 'Z'
-         ]
+
+def freeze_session(session, keep_var_names=None, output_names=None, clear_devices=True):
+    from tensorflow.python.framework.graph_util import convert_variables_to_constants
+    graph = session.graph
+    with graph.as_default():
+        freeze_var_names = list(set(v.op.name for v in tf.global_variables()).difference(keep_var_names or []))
+        output_names = output_names or []
+        output_names += [v.op.name for v in tf.global_variables()]
+        input_graph_def = graph.as_graph_def()
+        if clear_devices:
+            for node in input_graph_def.node:
+                node.device = ""
+        frozen_graph = convert_variables_to_constants(session, input_graph_def,
+                                                      output_names, freeze_var_names)
+        return frozen_graph
 
 def build_model(model_path):
     input_tensor = Input(name='the_input', shape=(128, 40, 3), dtype='float32')
@@ -68,52 +72,30 @@ def build_model(model_path):
     gru_2b = GRU(rnn_size,return_sequences=True,go_backwards=True,kernel_initializer='he_normal',name='gru_2b')(gru1_merged)
 
     # transforms RNN output to character activations:  
-    x = Dense(len(CHARS)+1,kernel_initializer='he_normal',name='dense2')(concatenate([gru_2,gru_2b]))
+    x = Dense(66,kernel_initializer='he_normal',name='dense2')(concatenate([gru_2,gru_2b]))
     y_pred = Activation('softmax',name='softmax')(x)
     base_model =  Model(inputs=input_tensor, outputs=y_pred)
     base_model.load_weights(model_path)
     return base_model
 
-
-batch_size = 32
-image_size = [128,40]
-num_test = 0
-# images = np.zeros([batch_size, image_size[1], image_size[0], 3])
-
-base_model = build_model('./model/my_model_weights.h5')
-
-with codecs.open('./car_pic/image/val_labels.txt',mode='r', encoding='utf-8') as f:
-    for line in f:
-        images = np.zeros([batch_size, image_size[1], image_size[0], 3])
-        img_dir = './car_pic/image/val/'+ line.strip() +'.jpg'
-        img = cv2.imdecode(np.fromfile(img_dir, dtype=np.uint8), 1)
-        images[0, ...] = img
-        images = np.transpose(images, axes=[0, 2, 1, 3])
-        y_pred = base_model.predict(images)
-        shape = y_pred[:,2:,:].shape
-        ctc_decode = K.ctc_decode(y_pred[:,2:,:], input_length=np.ones(shape[0])*shape[1])[0][0]
-        out = K.get_value(ctc_decode)[:, :7]
-        out = ''.join([CHARS[x] for x in out[0]])
-        
-        if out == line.strip():
-            num_test += 1
-        else:
-            print(out,line.strip())
-    print('总共准确识别%d张图片'%num_test)
-
-
-
-'''
-img_dir = './car_pic/image/val/湘A23456.jpg'
-images = np.zeros([batch_size, image_size[1], image_size[0], 3])
-img = cv2.imdecode(np.fromfile(img_dir, dtype=np.uint8), 1)
-# cv2.imshow('f',img)
-images[0, ...] = img
-images = np.transpose(images, axes=[0, 2, 1, 3])
-y_pred = base_model.predict(images)
-shape = y_pred[:,2:,:].shape
-ctc_decode = K.ctc_decode(y_pred[:,2:,:], input_length=np.ones(shape[0])*shape[1])[0][0]
-out = K.get_value(ctc_decode)[:, :7]
-out = ''.join([CHARS[x] for x in out[0]])
-print(out)
-'''
+ 
+"""----------------------------------配置路径-----------------------------------"""
+epochs=20
+# h5_model_path='./my_model_ep{}.h5'.format(epochs)
+h5_model_path='./model/my_model_weights.h5'
+output_path='.'
+# pb_model_name='my_model_ep{}.pb'.format(epochs)
+pb_model_name='./model/my_model_weights.pb'
+ 
+ 
+"""----------------------------------导入keras模型------------------------------"""
+K.set_learning_phase(0)
+net_model = build_model(h5_model_path)
+ 
+print('input is :', net_model.input.name)
+print ('output is:', net_model.output.name)
+ 
+"""----------------------------------保存为.pb格式------------------------------"""
+sess = K.get_session()
+frozen_graph = freeze_session(K.get_session(), output_names=[net_model.output.op.name])
+graph_io.write_graph(frozen_graph, output_path, pb_model_name, as_text=False)
