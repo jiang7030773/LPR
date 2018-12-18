@@ -51,7 +51,7 @@ def build_model(path):
     conv_shape = x.get_shape().as_list()
     rnn_length = conv_shape[1]
     rnn_dimen = conv_shape[2]*conv_shape[3]
-    print(conv_shape,rnn_length,rnn_dimen)
+    # print(conv_shape,rnn_length,rnn_dimen)
 
     x = Reshape(target_shape=(rnn_length,rnn_dimen))(x)
     x =Dense(64, kernel_initializer='he_uniform', kernel_regularizer=l2(l2_rate), bias_regularizer=l2(l2_rate))(x)
@@ -84,34 +84,35 @@ rnn_size = 128
 
 base_model = build_model('./model/my_model_weights_12.h5')
 
-with codecs.open('./car_pic/image/test_labels.txt',mode='r', encoding='utf-8') as f:
+#识别车牌集
+# with codecs.open('./car_pic/image/test_labels.txt',mode='r', encoding='utf-8') as f:
      
-    for line in f:
-        images = np.zeros([batch_size, image_size[1], image_size[0], 3])  
-        img_dir = './car_pic/image/test/'+ line.strip() +'.jpg'
-        img = cv2.imdecode(np.fromfile(img_dir, dtype=np.uint8), 1)
-        images[0, ...] = img
-        images = np.transpose(images, axes=[0, 2, 1, 3])
-        y_pred = base_model.predict(images)
-        shape = y_pred[:,2:,:].shape
-        ctc_decode = K.ctc_decode(y_pred[:,2:,:], input_length=np.ones(shape[0])*shape[1])[0][0]
-        out = K.get_value(ctc_decode)[:, :7]
-        out = ''.join([CHARS[x] for x in out[0]])
-        total_image += 1
-        if out == line[0:7]:
-            num_test += 1
-        else:
-            print(out,line.strip())
-    print('总共准确识别%d张图片'%num_test)
-    percent = num_test/total_image
-    print('完全正确识别率为%3f'%percent)
+#     for line in f:
+#         images = np.zeros([batch_size, image_size[1], image_size[0], 3])  
+#         img_dir = './car_pic/image/test/'+ line.strip() +'.jpg'
+#         img = cv2.imdecode(np.fromfile(img_dir, dtype=np.uint8), 1)
+#         images[0, ...] = img
+#         images = np.transpose(images, axes=[0, 2, 1, 3])
+#         y_pred = base_model.predict(images)
+#         shape = y_pred[:,2:,:].shape
+#         ctc_decode = K.ctc_decode(y_pred[:,2:,:], input_length=np.ones(shape[0])*shape[1])[0][0]
+#         out = K.get_value(ctc_decode)[:, :7]
+#         out = ''.join([CHARS[x] for x in out[0]])
+#         total_image += 1
+#         if out == line[0:7]:
+#             num_test += 1
+#         else:
+#             print(out,line.strip())
+#     print('总共准确识别%d张图片'%num_test)
+#     percent = num_test/total_image
+#     print('完全正确识别率为%3f'%percent)
 
 
-
-'''
-img_dir = './car_pic/image/val/湘A23456.jpg'
+# 识别单张车牌
+img_dir = './car_pic/0.jpg'
 images = np.zeros([batch_size, image_size[1], image_size[0], 3])
 img = cv2.imdecode(np.fromfile(img_dir, dtype=np.uint8), 1)
+# img = cv2.resize(img,(128,40))
 # cv2.imshow('f',img)
 images[0, ...] = img
 images = np.transpose(images, axes=[0, 2, 1, 3])
@@ -121,4 +122,3 @@ ctc_decode = K.ctc_decode(y_pred[:,2:,:], input_length=np.ones(shape[0])*shape[1
 out = K.get_value(ctc_decode)[:, :7]
 out = ''.join([CHARS[x] for x in out[0]])
 print(out)
-'''

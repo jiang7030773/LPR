@@ -225,9 +225,11 @@ class LPR():
         for j,plate in enumerate(images):
             plate, rect  = plate #二维数组赋值
             image_rgb,rect_refine = self.finemappingVertical(plate,rect)
-            t0 = time.time()
+            # t0 = time.time()
             res,confidence = self.recognizeOne(image_rgb)
-            tdiff = time.time()-t0
-            print(tdiff)
+            # tdiff = time.time()-t0
+            # print(tdiff)
+            # if len(res) != 7:
+            #     continue
             res_set.append([res,confidence,rect_refine])
         return res_set

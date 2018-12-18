@@ -121,7 +121,7 @@ class LPR():
         base_model = Model(inputs=input_tensor, outputs=x)
         base_model.load_weights(model_path)
         # plot_model(base_model,to_file=" gru_model.png") #画出模型 by jiang
-        base_model.summary()
+        # base_model.summary()
         return base_model
 
     #对车牌的左右边界进行回归 
@@ -188,5 +188,7 @@ class LPR():
             res,confidence = self.recognizeOne(image_rgb)
             # tdiff = time.time()-t0
             # print(tdiff)
+            if len(res) != 7:
+                continue
             res_set.append([res,confidence,rect_refine])
         return res_set

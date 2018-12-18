@@ -34,11 +34,11 @@ def drawRectBox(image,rect,addText):
     return imagex
 
 if __name__ == "__main__":
-    image_path ="./car_pic/timg.jpg"
+    image_path ="./car_pic/0.jpg"
     grr = SpeedTest(image_path)
     # cv2.imshow('test',grr)
     #grr = cv2.imread(image_path)
-    model = pr.LPR("model/cascade_lbp.xml","model/model12.h5","model/ocr_plate_all_gru.h5")
+    model = pr.LPR("model/cascade.xml","model/model12.h5","model/ocr_plate_all_gru.h5")
     try:
         for pstr,confidence,rect in model.SimpleRecognizePlateByE2E(grr):
                 if confidence>0.8:

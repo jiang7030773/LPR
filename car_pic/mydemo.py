@@ -6,15 +6,14 @@ from PIL import ImageFont
 from PIL import Image
 from PIL import ImageDraw
 import time
-import HyperLPRLite as pr
+import LPRdemo as pr
 import cv2
 import numpy as np
 
 # 测试模型检测所需的时间
 def SpeedTest(model,image_path):
     grr = cv2.imread(image_path)
-    model = pr.LPR("model/cascade_lbp.xml", "model/model12.h5", "model/my_model_weights_12.h5")
-    model.SimpleRecognizePlateByE2E(grr)
+    model.SimpleRecognizePlateByE2E(grr) #先运行一遍
     t0 = time.time()
     for _ in range(20):
         model.SimpleRecognizePlateByE2E(grr)
@@ -34,8 +33,8 @@ def drawRectBox(image,rect,addText):
     return imagex
 
 if __name__ == "__main__":
-    image_path ="./car_pic/timg.jpg"
-    model = pr.LPR("model/cascade.xml","model/model12.h5","model/my_model_weights_12.h5")
+    image_path ="./car_pic/0.jpg"
+    model = pr.LPR("model/cascade_lbp.xml","model/model12.h5","model/my_model_weights_12.h5")
     grr = SpeedTest(model,image_path)
     # cv2.imshow('test',grr)
     #grr = cv2.imread(image_path)
