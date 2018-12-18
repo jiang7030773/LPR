@@ -2,15 +2,30 @@
 import cv2
 import numpy as np
 from keras import backend as K
-from keras.models import *
-from keras.layers import *
+from keras import backend as K
+from keras.layers import Input, Dense, Activation, Conv2D, Reshape
+from keras.layers import BatchNormalization, Lambda, MaxPooling2D, Dropout
+from keras.layers.merge import add, concatenate
+from keras.callbacks import EarlyStopping,Callback
+from keras.layers.recurrent import GRU,LSTM
+from keras.models import Model
+from keras.layers import Flatten
+from keras.optimizers import SGD
+from keras.callbacks import ModelCheckpoint, TensorBoard
+from keras.models import load_model
+from keras.regularizers import l2  #加入了l2正则化
 from keras.utils.vis_utils import plot_model
+import time
 
-chars = [u"京", u"沪", u"津", u"渝", u"冀", u"晋", u"蒙", u"辽", u"吉", u"黑", u"苏", u"浙", u"皖", u"闽", u"赣", u"鲁", u"豫", u"鄂", u"湘", u"粤", u"桂",
-             u"琼", u"川", u"贵", u"云", u"藏", u"陕", u"甘", u"青", u"宁", u"新", u"0", u"1", u"2", u"3", u"4", u"5", u"6", u"7", u"8", u"9", u"A",
-             u"B", u"C", u"D", u"E", u"F", u"G", u"H", u"J", u"K", u"L", u"M", u"N", u"P", u"Q", u"R", u"S", u"T", u"U", u"V", u"W", u"X",
-             u"Y", u"Z",u"港",u"学",u"使",u"警",u"澳",u"挂",u"军",u"北",u"南",u"广",u"沈",u"兰",u"成",u"济",u"海",u"民",u"航",u"空"
-             ]
+chars = ['京', '沪', '津', '渝', '冀', '晋', '蒙', '辽', '吉', '黑',
+         '苏', '浙', '皖', '闽', '赣', '鲁', '豫', '鄂', '湘', '粤',
+         '桂', '琼', '川', '贵', '云', '藏', '陕', '甘', '青', '宁',
+         '新',
+         '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+         'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K',
+         'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V',
+         'W', 'X', 'Y', 'Z'
+         ]
 
 class LPR():
     def __init__(self,model_detection,model_finemapping,model_seq_rec):
@@ -79,7 +94,7 @@ class LPR():
         results = ""
         confidence = 0.0
         table_pred = y_pred.reshape(-1, len(chars)+1)
-        res = table_pred.argmax(axis=1)
+        res = table_pred.argmax(axis=1) #返回行最大索引
         for i,one in enumerate(res):
             if one<len(chars) and (i==0 or (one!=res[i-1])):
                 results+= chars[one]
@@ -92,42 +107,67 @@ class LPR():
     ocr部分的网络模型(keras模型) 
     输入层：164*48*3的tensor 
     输出层：长度为7 的tensor，类别有len(chars)+1种
-    '''
-    def model_seq_rec(self,model_path):
-        width, height, n_len, n_class = 164, 48, 7, len(chars)+ 1
-        rnn_size = 256
-        input_tensor = Input((164, 48, 3))
-        x = input_tensor
+    '''     
+    def model_seq_rec(self,path):
+        # 超参
         base_conv = 32
-        for i in range(3):
-            x = Conv2D(base_conv * (2 ** (i)), (3, 3))(x)
-            x = BatchNormalization()(x)
-            x = Activation('relu')(x)
-            x = MaxPooling2D(pool_size=(2, 2))(x)
-        conv_shape = x.get_shape()
-        x = Reshape(target_shape=(int(conv_shape[1]), int(conv_shape[2] * conv_shape[3])))(x)
-        x = Dense(32)(x)
-        x = BatchNormalization()(x)
+        l2_rate = 1e-5
+        rnn_size = 128
+
+        input_tensor = Input(name='the_input', shape=(128,40,3), dtype='float32')
+        x = input_tensor
+        #卷积层1
+        for i, n_cnn in enumerate([3,4]):
+            for j in range(n_cnn):
+                x = Conv2D(base_conv * 2**i, (3,3), padding="same", kernel_initializer='he_uniform', 
+                    kernel_regularizer=l2(l2_rate))(x)
+                x = BatchNormalization(gamma_regularizer=l2(l2_rate), beta_regularizer=l2(l2_rate))(x)
+                x = Activation('relu')(x)
+            x = MaxPooling2D(pool_size=(2, 2))(x)  
+            
+        for i, n_cnn in enumerate([6]):
+            for j in range(n_cnn):
+                x = Conv2D(base_conv * 2**2, (3,3), padding="same", kernel_initializer='he_uniform', 
+                    kernel_regularizer=l2(l2_rate))(x)
+                x = BatchNormalization(gamma_regularizer=l2(l2_rate), beta_regularizer=l2(l2_rate))(x)
+                x = Activation('relu')(x)
+        #维度变换
+        conv_shape = x.get_shape().as_list()
+        rnn_length = conv_shape[1]
+        rnn_dimen = conv_shape[2]*conv_shape[3]
+        # print(conv_shape,rnn_length,rnn_dimen)
+
+        x = Reshape(target_shape=(rnn_length,rnn_dimen))(x)
+        x =Dense(64, kernel_initializer='he_uniform', kernel_regularizer=l2(l2_rate), bias_regularizer=l2(l2_rate))(x)
+        x = BatchNormalization(gamma_regularizer=l2(l2_rate), beta_regularizer=l2(l2_rate))(x)
         x = Activation('relu')(x)
-        gru_1 = GRU(rnn_size, return_sequences=True, kernel_initializer='he_normal', name='gru1')(x)
-        gru_1b = GRU(rnn_size, return_sequences=True, go_backwards=True, kernel_initializer='he_normal', name='gru1_b')(x)
-        gru1_merged = add([gru_1, gru_1b])
-        gru_2 = GRU(rnn_size, return_sequences=True, kernel_initializer='he_normal', name='gru2')(gru1_merged)
-        gru_2b = GRU(rnn_size, return_sequences=True, go_backwards=True, kernel_initializer='he_normal', name='gru2_b')(gru1_merged)
-        x = concatenate([gru_2, gru_2b])
-        x = Dropout(0.25)(x)
-        x = Dense(n_class, kernel_initializer='he_normal', activation='softmax')(x)
-        base_model = Model(inputs=input_tensor, outputs=x)
-        base_model.load_weights(model_path)
-        #plot_model(base_model,to_file=" gru_model.png") #画出模型 by jiang
+        
+        #两层bidirecitonal GRUs
+        gru_1 = GRU(rnn_size,return_sequences=True,kernel_initializer='he_normal')(x)
+        gru_1b = GRU(rnn_size,return_sequences=True,go_backwards=True,kernel_initializer='he_normal')(x)
+        gru1_merged = add([gru_1,gru_1b])
+        gru_2 = GRU(rnn_size,return_sequences=True,kernel_initializer='he_normal')(gru1_merged)
+        gru_2b = GRU(rnn_size,return_sequences=True,go_backwards=True,kernel_initializer='he_normal')(gru1_merged)
+
+        # transforms RNN output to character activations:  
+        x = concatenate([gru_2,gru_2b])
+        x = Dense(len(chars)+1,kernel_initializer='he_normal', kernel_regularizer=l2(l2_rate), bias_regularizer=l2(l2_rate))(x)
+        y_pred = Activation('softmax')(x)
+
+        #打印出模型概况
+        base_model = Model(inputs=input_tensor, outputs=y_pred)
+        base_model.load_weights(path)
+    
         return base_model
 
+ 
     #对车牌的左右边界进行回归 
     def model_finemapping(self):  
         input = Input(shape=[16, 66, 3])  # change this shape to [None,None,3] to enable arbitraty shape input
         x = Conv2D(10, (3, 3), strides=1, padding='valid', name='conv1')(input)
         x = Activation("relu", name='relu1')(x)
-        x = MaxPool2D(pool_size=2)(x)
+        # x = MaxPool2D(pool_size=2)(x)
+        x = MaxPooling2D(pool_size=(2, 2))(x)  
         x = Conv2D(16, (3, 3), strides=1, padding='valid', name='conv2')(x)
         x = Activation("relu", name='relu2')(x)
         x = Conv2D(32, (3, 3), strides=1, padding='valid', name='conv3')(x)
@@ -168,8 +208,11 @@ class LPR():
     2.将图像转置，输入
     '''
     def recognizeOne(self,src):
+        images = np.zeros([1, 40, 128, 3])
+        
         x_tempx = src
-        x_temp = cv2.resize(x_tempx,(164,48))
+        x_temp = cv2.resize(x_tempx,(128,40))
+        images[0, ...] = x_temp
         x_temp = x_temp.transpose(1, 0, 2)
         y_pred = self.modelSeqRec.predict(np.array([x_temp]))
         y_pred = y_pred[:,2:,:]
@@ -182,6 +225,9 @@ class LPR():
         for j,plate in enumerate(images):
             plate, rect  = plate #二维数组赋值
             image_rgb,rect_refine = self.finemappingVertical(plate,rect)
+            t0 = time.time()
             res,confidence = self.recognizeOne(image_rgb)
+            tdiff = time.time()-t0
+            print(tdiff)
             res_set.append([res,confidence,rect_refine])
         return res_set

@@ -1,5 +1,6 @@
 #coding=utf-8
 import cv2
+import time
 import numpy as np
 from keras import backend as K
 from keras.models import *
@@ -119,7 +120,8 @@ class LPR():
         x = Dense(n_class, kernel_initializer='he_normal', activation='softmax')(x)
         base_model = Model(inputs=input_tensor, outputs=x)
         base_model.load_weights(model_path)
-        #plot_model(base_model,to_file=" gru_model.png") #画出模型 by jiang
+        # plot_model(base_model,to_file=" gru_model.png") #画出模型 by jiang
+        base_model.summary()
         return base_model
 
     #对车牌的左右边界进行回归 
@@ -182,6 +184,9 @@ class LPR():
         for j,plate in enumerate(images):
             plate, rect  = plate #二维数组赋值
             image_rgb,rect_refine = self.finemappingVertical(plate,rect)
+            # t0 = time.time()
             res,confidence = self.recognizeOne(image_rgb)
+            # tdiff = time.time()-t0
+            # print(tdiff)
             res_set.append([res,confidence,rect_refine])
         return res_set
