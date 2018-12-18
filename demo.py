@@ -33,23 +33,18 @@ def drawRectBox(image,rect,addText):
     imagex = np.array(img)
     return imagex
 
-
-
 if __name__ == "__main__":
-    image_path ="./car_pic/PR/car.jpg"
+    image_path ="./car_pic/timg.jpg"
     grr = SpeedTest(image_path)
+    # cv2.imshow('test',grr)
     #grr = cv2.imread(image_path)
     model = pr.LPR("model/cascade_lbp.xml","model/model12.h5","model/ocr_plate_all_gru.h5")
     try:
         for pstr,confidence,rect in model.SimpleRecognizePlateByE2E(grr):
-                if confidence>0.7:
+                if confidence>0.8:
                     image = drawRectBox(grr, rect, pstr+" "+str(round(confidence,3)))
-                    print ("plate_str:")
-                    print (pstr)
-                    print ("plate_confidence")
-                    # print ("%.3f"%confidence)
-
-
+                    print ("plate_str:%s"%pstr)
+                    print ("plate_confidence:%.3f"%confidence)
         cv2.imshow("image",image)
         cv2.waitKey(0)          #等待键盘输入
         cv2.destroyAllWindows() #关闭所有创建的窗口

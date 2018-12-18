@@ -14,7 +14,7 @@ def Modify_suffix(filepath):
     renames_nums = 0
     images = os.listdir(filepath)
     for name in images:
-        if name.find("bmp")==-1:
+        if name.find("bmp") != -1:
             renames_nums += 1
             os.rename(filepath+name, filepath+'浙A'+name.split('.')[0]+'.jpg')
             print("修改成功第%d张"%renames_nums)
@@ -33,7 +33,8 @@ def del_Repeat_name(filepath):
     print('删掉了%d张'%Repeat_name)   
 
 if __name__ == '__main__':
-    filepath = "./car_pic/image/train/"
-    rename(filepath)
-    del_Repeat_name(filepath)
-    rename(filepath)
+    filepath = "./car_pic/image/test/test/"
+    Modify_suffix(filepath)
+    
+    # del_Repeat_name(filepath)
+    # rename(filepath)

@@ -24,5 +24,5 @@ def resize_image(path):
 # def label():
 
 if __name__ == '__main__':
-    path = "./car_pic/image/val/"
+    path = "./car_pic/image/test/test/"
     resize_image(path)

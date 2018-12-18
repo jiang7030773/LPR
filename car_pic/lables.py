@@ -8,14 +8,14 @@ def ListFilesToTxt(dir,file,wildcard,recursion):
             for ext in exts:
                 print(root,name,ext)
                 if(name.endswith(ext)):
-                   #file.write(name.split(".")[0].encode('utf-8'))
-                    file.write(name[0:7] + "\n")
+                    file.write(name.split(".")[0]+'\n')
+                    # file.write(name + "\n")
                     break
         if(not recursion):
             break
 def Test():
-  dir="./car_pic/image/val"
-  outfile="./car_pic/image/val_labels.txt"
+  dir="./car_pic/image/test/"
+  outfile="./car_pic/image/test_labels.txt"
   wildcard = ".jpg"
 
   file = open(outfile,'w+')
